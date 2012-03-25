@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import csv
+import copy
 import math
 import random
 from itertools import izip
@@ -33,16 +34,36 @@ class StumpLearner(WeakLearner):
     def train(self, distribution, data):
         """Tries a random row, and tries a random value"""
         WeakLearner.train(self, distribution, data)
-        c = self.build_random_classifier(data)
 
+        num_random_classifiers = 100
+        random_classifiers = [self.build_random_classifier(data)
+                                    for i in xrange(num_random_classifiers)]
+        best = list(sorted([self.correct_classifier(distribution, c, data)
+                                            for c in random_classifiers]))[0]
+        return best[1]
+
+    def correct_classifier(self, distribution, classifier, data):
+        """Accepts a distribution, 
+                dictionary describing classifier,
+                and data.
+            Returns 2-tuple of (error, new classifier) 
+                    (opposite of original).
+        """
         # training error
+        c = copy.deepcopy(classifier)
         predicted = self.classify(c, data)
         error = calculate_error(distribution, predicted, data)
         if error > 0.5:
             c['multiplier'] = -1.0
-        return c
+            error = 1.0 - error
+        return error, c
+
 
     def build_random_classifier(self, data):
+        """Accepts data, 
+            makes a random classifiers that matches a value on a random row.
+            Returns classifier parameters (dictionary).
+        """
         f = len(data[0]) - 1
         r = random.randint(0, f-1) #random row
         values = list(set([d[r] for d in data]))
@@ -151,7 +172,7 @@ def read_adult_data(filename):
     data = []
     for row in reader:
         row = [r.strip('\r\n ') for r in row]
-        row[-1] = (1 if row[-1] == '>50K' else -1)
+        row[-1] = (1 if row[-1].startswith('>50K') else -1)
         data.append(row)
     return data
 
@@ -167,7 +188,7 @@ if __name__=='__main__':
     m = len(training_data)
     D1 = uniform_distribution(m)
     stump_learner = StumpLearner()
-    stopper = lambda t,e: t > 40 #e == 0
+    stopper = lambda t,e: t > 1000 #e == 0
 
     #import pdb; pdb.set_trace()
 
