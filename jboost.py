@@ -88,20 +88,20 @@ def calculate_normalizer(D, error):
 def calculate_alpha(error):
     return 0.5 * math.log((1.0 - error) / error)
 
-def calculate_error(distribution, predicted, training_data):
+def calculate_error(distribution, predicted, data):
     """Accept predicted labels (list of +1 and -1),
-        and training data list of rows (list of features).
+        and data list of rows (list of features).
         Returns error rate of predictions versus data.
     """
     assert is_probability_distribution(distribution)
-    assert len(predicted) == len(training_data)
-    assert len(distribution) == len(training_data)
-    assert all([t[-1] in [-1, 1] for t in training_data])
+    assert len(predicted) == len(data)
+    assert len(distribution) == len(data)
+    assert all([t[-1] in [-1, 1] for t in data])
     assert all([t in [-1, 0, 1] for t in predicted])
 
-    training_labels = [t[-1] for t in training_data]
+    gold_truth_labels = [t[-1] for t in data]
     labels = np.array([(1.0 if p != t else 0.0)
-                        for p,t in izip(predicted, training_labels)])
+                        for p,t in izip(predicted, gold_truth_labels)])
 
     return np.sum(distribution * labels)
 
@@ -128,14 +128,26 @@ def boost(D1, weak_learner, training_data, stopping_criterion):
         classifier = weak_learner.train(D, training_data)
         predicted = weak_learner.classify(classifier, training_data)
 
+
         # calculate epsilon_t, alpha_t, and Z_t
         error = calculate_error(D, predicted, training_data)
         assert error <= 0.5
         alpha = calculate_alpha(error)
 
+        final_hypothesis.append((alpha, classifier))
+
         #update D
         y = np.array([d[-1] for d in training_data])
-        D = D * (1 / (np.exp(alpha * y * np.array(predicted))))
+
+        # in jboost, different D from AdaBoost
+        #D = D * np.exp(-1 * alpha * y * np.array(predicted))
+        Fx, combined_error = calculate_combined_error(D1, 
+                                                      weak_learner, 
+                                                      final_hypothesis, 
+                                                      training_data)
+        smoother = np.sqrt((1 - combined_error) / combined_error)
+        D = 1 / (smoother + np.exp(y * Fx))
+
         normalizer = calculate_normalizer(D, error)
         D = D / normalizer
         print t, 'D', np.sum(D), 'E:', error
@@ -146,8 +158,6 @@ def boost(D1, weak_learner, training_data, stopping_criterion):
 
         #D = D / np.sum(D)
         assert is_probability_distribution(D)
-
-        final_hypothesis.append((alpha, classifier))
 
         if stopping_criterion(t, error):
             break
@@ -180,6 +190,15 @@ def read_adult_data(filename):
 def uniform_distribution(m):
     return np.ones(m) / m
 
+def calculate_combined_error(D1, stump_learner, combined_classifier, data):
+    Fx = combined_classify(stump_learner, 
+                                  combined_classifier, 
+                                  data)
+    assert len(Fx) == len(data)
+    predicted = np.sign(Fx)
+    combined_error = calculate_error(D1, predicted, data)
+    return Fx, combined_error 
+
 if __name__=='__main__':
     #load data
     training_data = read_adult_data('adult.data')
@@ -200,21 +219,11 @@ if __name__=='__main__':
     combined_classifier = boost(D1, stump_learner, training_data, stopper)
 
     # training error
-    Fx = combined_classify(stump_learner, 
-                                  combined_classifier, 
-                                  training_data)
-    assert len(Fx) == len(training_data)
-    predicted = np.sign(Fx)
-    training_error = calculate_error(D1, predicted, training_data)
+    Fx, training_error = calculate_combined_error(D1, stump_learner, combined_classifier, training_data)
     print training_error
 
     # test error
-    Fx = combined_classify(stump_learner, 
-                           combined_classifier, 
-                           test_data)
-    predicted = np.sign(Fx)
-    m = len(predicted)
-    test_error = calculate_error(uniform_distribution(m), predicted, test_data)
+    Fx, test_error = calculate_combined_error(uniform_distribution(len(test_data)), stump_learner, combined_classifier, test_data)
     print test_error
 
 

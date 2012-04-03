@@ -3,3 +3,5 @@ Distributed Boosting
 A distributed version of the AdaBoost algorithm.
 
 The servers cooperate together with sampling and sub-boosting in order to build an efficient classifier.
+
+TODO: predict the next distribution?
